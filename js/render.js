@@ -3,7 +3,7 @@ import { state, getLoggedInUser } from './state.js';
 import { RANKS, CATEGORIES, BADGES, MHR_MONSTER_TIERS, hunterTitleForCompletions, randomQuote } from './data.js';
 import { escHtml, starsHtml, timeAgo, rewardsDisplay } from './utils.js';
 
-const MHR_ICON_BASE = 'MHR_Monster_Icons_HD/svg';
+const MHR_ICON_BASE = 'assets/svg';
 function monsterIconImg(monsterIcon) {
   if (!monsterIcon) return '';
   const src = `${MHR_ICON_BASE}/${encodeURIComponent(monsterIcon)}`;
