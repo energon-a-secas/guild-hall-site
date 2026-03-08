@@ -2,8 +2,19 @@ import { mutation } from "./_generated/server";
 import { v } from "convex/values";
 
 export const register = mutation({
-  args: { username: v.string(), password: v.string() },
-  handler: async (ctx, { username, password }) => {
+  args: {
+    username: v.string(),
+    password: v.string(),
+    invitePassword: v.string(),
+  },
+  handler: async (ctx, { username, password, invitePassword }) => {
+    const required = process.env.INVITE_PASSWORD;
+    if (required != null && required !== "") {
+      if (invitePassword !== required) {
+        return { ok: false, error: "Invalid invite code" };
+      }
+    }
+
     const existing = await ctx.db
       .query("users")
       .withIndex("by_username", (q) => q.eq("username", username))

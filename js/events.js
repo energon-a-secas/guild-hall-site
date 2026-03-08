@@ -1,8 +1,17 @@
 // ── Event handlers ───────────────────────────────────────────
-import { state, save, savePoogie, getLoggedInUser, setLoggedInUser, getUserRole, setUserRole } from './state.js';
+import { state, convex, api, setQuestsFromConvex, getLoggedInUser, setLoggedInUser, getUserRole, setUserRole } from './state.js';
 import { render, renderQuestGrid, renderStats, renderQuestDetail, renderHunterCard, renderRewardOptions } from './render.js';
-import { RANKS, POOGIE_OUTFITS, randomQuote } from './data.js';
+import { RANKS, POOGIE_OUTFITS, MHR_MONSTER_TIERS, getMonsterIconForRank, randomQuote } from './data.js';
 import { $, showToast } from './utils.js';
+
+async function refetchQuests() {
+  try {
+    const quests = await convex.query(api.quests.list);
+    setQuestsFromConvex(quests || []);
+  } catch (e) {
+    console.warn('Refetch failed', e);
+  }
+}
 
 export function bindEvents() {
   // ── Auth ────────────────────────────────────────────────
@@ -10,7 +19,7 @@ export function bindEvents() {
     const panel = $('authPanel');
     panel?.classList.toggle('open');
     if (panel?.classList.contains('open')) {
-      panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   });
 
@@ -24,19 +33,20 @@ export function bindEvents() {
     });
   });
 
-  $('authLoginBtn')?.addEventListener('click', () => handleLocalAuth('login'));
-  $('authRegBtn')?.addEventListener('click', () => handleLocalAuth('register'));
+  $('authLoginBtn')?.addEventListener('click', () => handleAuth('login'));
+  $('authRegBtn')?.addEventListener('click', () => handleAuth('register'));
   $('authLogout')?.addEventListener('click', () => {
-    setLoggedInUser(null); setUserRole(null);
+    setLoggedInUser(null);
+    setUserRole(null);
     renderAuthState(null);
     showToast('Logged out. See you next hunt!');
   });
 
   ['authLoginUser', 'authLoginPass'].forEach(id => {
-    $(id)?.addEventListener('keydown', e => { if (e.key === 'Enter') handleLocalAuth('login'); });
+    $(id)?.addEventListener('keydown', e => { if (e.key === 'Enter') handleAuth('login'); });
   });
-  ['authRegUser', 'authRegPass'].forEach(id => {
-    $(id)?.addEventListener('keydown', e => { if (e.key === 'Enter') handleLocalAuth('register'); });
+  ['authRegUser', 'authRegPass', 'authInviteCode'].forEach(id => {
+    $(id)?.addEventListener('keydown', e => { if (e.key === 'Enter') handleAuth('register'); });
   });
 
   const savedUser = getLoggedInUser();
@@ -63,16 +73,27 @@ export function bindEvents() {
     renderQuestGrid();
   });
 
-  // ── Post quest ─────────────────────────────────────────
+  // ── Request mission ────────────────────────────────────
+  $('requestQuestBtn')?.addEventListener('click', () => {
+    if (!getLoggedInUser()) { showToast('Log in to request a mission'); return; }
+    fillRequestSublevel();
+    document.getElementById('requestModal').classList.add('open');
+  });
+
+  $('reqRank')?.addEventListener('change', fillRequestSublevel);
+  $('reqCancel')?.addEventListener('click', () => closeModal('requestModal'));
+  $('reqSubmit')?.addEventListener('click', submitRequest);
+
+  // ── Post quest (Guildmaster) ────────────────────────────
   $('postQuestBtn')?.addEventListener('click', () => {
     if (!getLoggedInUser()) { showToast('Log in to post quests'); return; }
+    if (getUserRole() !== 'guildmaster') { showToast('Only the Guildmaster can post quests'); return; }
     renderRewardOptions();
     document.getElementById('postModal').classList.add('open');
   });
 
   $('postCancel')?.addEventListener('click', () => closeModal('postModal'));
   $('postSubmit')?.addEventListener('click', submitQuest);
-
   $('questRank')?.addEventListener('change', updateStarOptions);
 
   // ── SOS Flare ──────────────────────────────────────────
@@ -104,7 +125,21 @@ export function bindEvents() {
   window.closeModal = closeModal;
   window.acceptQuest = acceptQuest;
   window.completeQuest = completeQuest;
+  window.approveQuest = approveQuest;
+  window.saveQuestSuggestions = saveQuestSuggestions;
   window.openHunter = openHunter;
+  window.getUserRole = getUserRole;
+}
+
+function fillRequestSublevel() {
+  const rank = $('reqRank')?.value || 'low';
+  const pool = MHR_MONSTER_TIERS[rank] || MHR_MONSTER_TIERS.low;
+  const sel = $('reqSublevel');
+  if (!sel) return;
+  sel.innerHTML = pool.map((filename, i) => {
+    const name = filename.replace(/^MHR(ise|S)-|_Icon.*\.svg$/gi, '').replace(/_/g, ' ');
+    return `<option value="${filename}">${name}</option>`;
+  }).join('');
 }
 
 function openQuest(id) {
@@ -119,23 +154,45 @@ export function closeModal(id) {
   document.getElementById(id)?.classList.remove('open');
 }
 
-function handleLocalAuth(action) {
+async function handleAuth(action) {
   const isLogin = action === 'login';
   const userEl = $(isLogin ? 'authLoginUser' : 'authRegUser');
   const passEl = $(isLogin ? 'authLoginPass' : 'authRegPass');
-  const username = userEl?.value.trim();
-  const password = passEl?.value;
-  if (!username || !password) { showToast('Enter hunter name and password'); return; }
+  const username = userEl?.value.trim()?.toLowerCase() ?? '';
+  const password = passEl?.value ?? '';
+  if (!username || !password) {
+    showToast('Enter hunter name and password');
+    return;
+  }
+  if (!isLogin) {
+    const inviteEl = $('authInviteCode');
+    if (!inviteEl?.value?.trim()) {
+      showToast('Enter the invite code to register');
+      return;
+    }
+  }
 
-  // Local auth (no backend): accept any credentials
-  const role = username.toLowerCase() === 'guildmaster' ? 'guildmaster' : 'hunter';
-  setLoggedInUser(username);
-  setUserRole(role);
-  renderAuthState(username, role);
-  showToast(isLogin ? `Welcome back, ${username}!` : `Welcome to the guild, ${username}!`);
-  if (userEl) userEl.value = '';
-  if (passEl) passEl.value = '';
-  $('authPanel')?.classList.remove('open');
+  try {
+    const fn = isLogin ? api.auth.login : api.auth.register;
+    const args = isLogin ? { username, password } : { username, password, invitePassword: $('authInviteCode')?.value?.trim() ?? '' };
+    const result = await convex.mutation(fn, args);
+    if (!result?.ok) {
+      showToast(result?.error || 'Failed');
+      return;
+    }
+    const role = result.role || (username === 'guildmaster' ? 'guildmaster' : 'hunter');
+    setLoggedInUser(result.username ?? username);
+    setUserRole(role);
+    renderAuthState(result.username ?? username, role);
+    showToast(isLogin ? `Welcome back, ${result.username}!` : `Welcome to the guild, ${result.username}!`);
+    if (userEl) userEl.value = '';
+    if (passEl) passEl.value = '';
+    const inviteEl = $('authInviteCode');
+    if (inviteEl) inviteEl.value = '';
+    $('authPanel')?.classList.remove('open');
+  } catch (e) {
+    showToast(e?.message || 'Connection error');
+  }
 }
 
 function renderAuthState(username, role) {
@@ -151,44 +208,87 @@ function renderAuthState(username, role) {
   }
 }
 
-function submitQuest() {
+async function submitQuest() {
   const title = $('questTitle')?.value.trim();
   const desc = $('questDesc')?.value.trim();
   const rank = $('questRank')?.value;
-  const stars = parseInt($('questStars')?.value, 10);
+  const stars = parseInt($('questStars')?.value, 10) || 1;
   const category = $('questCategory')?.value;
   const repo = $('questRepo')?.value.trim();
   const reward = document.getElementById('questReward')?.value || '';
   const user = getLoggedInUser();
-
   if (!title) { showToast('Quest needs a name, hunter!'); return; }
   if (!desc) { showToast('Describe the objective'); return; }
 
-  const quest = {
-    id: 'q-' + Date.now(),
-    title, description: desc, rank, stars, category,
-    status: 'posted',
-    repository: repo,
-    reward,
-    postedBy: user || 'Anonymous',
-    acceptedBy: [],
-    completedBy: [],
-    createdAt: Date.now(),
-  };
+  try {
+    await convex.mutation(api.quests.create, {
+      title,
+      description: desc,
+      rank,
+      stars,
+      category,
+      repository: repo || undefined,
+      reward: reward || undefined,
+      postedBy: user || 'Guildmaster',
+    });
+    await refetchQuests();
+    render();
+    closeModal('postModal');
+    showToast('Quest posted to the board!');
+    clearPostForm();
+  } catch (e) {
+    showToast(e?.message || 'Failed to post');
+  }
+}
 
-  state.quests.unshift(quest);
-  save(state);
-  closeModal('postModal');
-  renderQuestGrid();
-  renderStats();
-  showToast('Quest posted to the board!');
-  clearPostForm();
+async function submitRequest() {
+  const title = $('reqTitle')?.value.trim();
+  const desc = $('reqDesc')?.value.trim();
+  const rank = $('reqRank')?.value;
+  const sublevelSel = $('reqSublevel');
+  const monsterIcon = sublevelSel?.value || getMonsterIconForRank(rank, 0);
+  const stars = parseInt($('reqStars')?.value, 10) || 0;
+  const karma = parseInt($('reqKarma')?.value, 10) || 0;
+  const category = $('reqCategory')?.value;
+  const rawSuggestions = $('reqSuggestions')?.value?.trim() ?? '';
+  const toolSuggestions = rawSuggestions ? rawSuggestions.split(/\n/).map(s => s.trim()).filter(Boolean) : [];
+  const user = getLoggedInUser();
+  if (!title) { showToast('Objective is required'); return; }
+
+  try {
+    await convex.mutation(api.quests.createRequest, {
+      title,
+      description: desc || title,
+      rank,
+      stars,
+      karma: karma || undefined,
+      category,
+      toolSuggestions,
+      monsterIcon,
+      requestedBy: user || 'Hunter',
+    });
+    await refetchQuests();
+    render();
+    closeModal('requestModal');
+    showToast('Request submitted. The Guildmaster will review it.');
+    clearRequestForm();
+  } catch (e) {
+    showToast(e?.message || 'Failed to submit request');
+  }
 }
 
 function clearPostForm() {
   if ($('questTitle')) $('questTitle').value = '';
   if ($('questDesc')) $('questDesc').value = '';
   if ($('questRepo')) $('questRepo').value = '';
+}
+
+function clearRequestForm() {
+  if ($('reqTitle')) $('reqTitle').value = '';
+  if ($('reqDesc')) $('reqDesc').value = '';
+  if ($('reqStars')) $('reqStars').value = '0';
+  if ($('reqKarma')) $('reqKarma').value = '0';
+  if ($('reqSuggestions')) $('reqSuggestions').value = '';
 }
 
 function updateStarOptions() {
@@ -199,36 +299,78 @@ function updateStarOptions() {
   starsEl.innerHTML = range.map(s => `<option value="${s}">${s}</option>`).join('');
 }
 
-function acceptQuest(id) {
+async function acceptQuest(id) {
   const user = getLoggedInUser();
   if (!user) { showToast('Log in first!'); return; }
-  const q = state.quests.find(x => x.id === id);
-  if (!q || q.acceptedBy.includes(user)) return;
+  const q = state.quests.find(x => x.id === id || x._id?.toString() === id);
+  if (!q || (q.acceptedBy || []).includes(user)) return;
+  if (q.status === 'requested') { showToast('This request is not approved yet'); return; }
 
-  q.acceptedBy.push(user);
-  if (q.status === 'posted') q.status = 'active';
-  save(state);
-  renderQuestDetail(id);
-  renderQuestGrid();
-  renderStats();
-  showToast(`Quest accepted! Happy hunting, ${user}!`);
+  try {
+    const result = await convex.mutation(api.quests.accept, { questId: id, username: user });
+    if (!result?.ok) { showToast(result?.error || 'Failed'); return; }
+    await refetchQuests();
+    renderQuestDetail(id);
+    renderQuestGrid();
+    renderStats();
+    showToast(`Quest accepted! Happy hunting, ${user}!`);
+  } catch (e) {
+    showToast(e?.message || 'Failed');
+  }
 }
 
-function completeQuest(id) {
+async function completeQuest(id) {
   const user = getLoggedInUser();
   if (!user) return;
-  const q = state.quests.find(x => x.id === id);
-  if (!q || q.completedBy.includes(user)) return;
+  const q = state.quests.find(x => x.id === id || x._id?.toString() === id);
+  if (!q || (q.completedBy || []).includes(user)) return;
 
-  q.completedBy.push(user);
-  if (q.completedBy.length >= q.acceptedBy.length && q.acceptedBy.length > 0) {
-    q.status = 'completed';
+  try {
+    await convex.mutation(api.quests.complete, { questId: id, username: user });
+    await refetchQuests();
+    renderQuestDetail(id);
+    renderQuestGrid();
+    renderStats();
+    showQuestComplete();
+  } catch (e) {
+    showToast(e?.message || 'Failed');
   }
-  save(state);
-  renderQuestDetail(id);
-  renderQuestGrid();
-  renderStats();
-  showQuestComplete();
+}
+
+async function approveQuest(id) {
+  const user = getLoggedInUser();
+  if (!user) return;
+  try {
+    const result = await convex.mutation(api.quests.approveQuest, { questId: id, username: user });
+    if (!result?.ok) { showToast(result?.error || 'Failed'); return; }
+    await refetchQuests();
+    renderQuestDetail(id);
+    renderQuestGrid();
+    renderStats();
+    closeModal('questModal');
+    showToast('Request approved and posted to the board!');
+  } catch (e) {
+    showToast(e?.message || 'Failed');
+  }
+}
+
+async function saveQuestSuggestions(questId, text) {
+  const toolSuggestions = text.split(/\n/).map(s => s.trim()).filter(Boolean);
+  try {
+    const result = await convex.mutation(api.quests.updateToolSuggestions, { questId, toolSuggestions });
+    if (!result?.ok) { showToast('Failed to save'); return; }
+    await refetchQuests();
+    renderQuestDetail(questId);
+    const view = document.getElementById('qdSuggestionsView');
+    const edit = document.getElementById('qdSuggestionsEdit');
+    const toggle = document.getElementById('qdSuggestionsToggle');
+    if (view) view.hidden = false;
+    if (edit) edit.hidden = true;
+    if (toggle) toggle.textContent = 'Edit suggestions';
+    showToast('Suggestions saved');
+  } catch (e) {
+    showToast(e?.message || 'Failed to save');
+  }
 }
 
 function showQuestComplete() {
@@ -247,6 +389,7 @@ function showQuestComplete() {
 let poogieOutfitIdx = 0;
 function petPoogie() {
   state.poogiePets++;
+  const savePoogie = (n) => { try { localStorage.setItem('guild-hall-poogie', String(n)); } catch {} };
   savePoogie(state.poogiePets);
   const poog = $('poogie');
   if (!poog) return;

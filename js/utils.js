@@ -1,11 +1,12 @@
-// ── Shared utilities ─────────────────────────────────────────
+// Shared utilities
 
 const _els = {};
-export function $(id) {
+
+function $(id) {
   return _els[id] || (_els[id] = document.getElementById(id));
 }
 
-export function escHtml(str) {
+function escHtml(str) {
   if (str === null || str === undefined) return '';
   return String(str)
     .replace(/&/g, '&amp;')
@@ -15,7 +16,8 @@ export function escHtml(str) {
 }
 
 let _toastTimer = null;
-export function showToast(msg) {
+
+function showToast(msg) {
   let el = document.getElementById('app-toast');
   if (!el) {
     el = document.createElement('div');
@@ -29,7 +31,7 @@ export function showToast(msg) {
   _toastTimer = setTimeout(() => el.classList.remove('visible'), 2400);
 }
 
-export function debounce(fn, ms) {
+function debounce(fn, ms) {
   let timer;
   return (...args) => {
     clearTimeout(timer);
@@ -37,12 +39,23 @@ export function debounce(fn, ms) {
   };
 }
 
-export function starsHtml(count, rank) {
+function starsHtml(count, rank) {
+  if (count == null || count === 0) return '<span class="star star-tbd">TBD</span>';
   const cls = `star star-${rank}`;
   return Array.from({ length: count }, () => `<span class="${cls}">\u2605</span>`).join('');
 }
 
-export function timeAgo(ts) {
+function rewardsDisplay(q) {
+  const stars = q.stars ?? 0;
+  const karma = q.karma ?? 0;
+  if (stars === 0 && karma === 0) return 'To Define';
+  const parts = [];
+  if (stars > 0) parts.push(`${stars} Stars`);
+  if (karma > 0) parts.push(`${karma} Karma`);
+  return parts.join(' · ') || 'To Define';
+}
+
+function timeAgo(ts) {
   const diff = Date.now() - ts;
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return 'just now';
@@ -53,3 +66,5 @@ export function timeAgo(ts) {
   if (days < 30) return `${days}d ago`;
   return `${Math.floor(days / 30)}mo ago`;
 }
+
+export { $, escHtml, showToast, debounce, starsHtml, rewardsDisplay, timeAgo };

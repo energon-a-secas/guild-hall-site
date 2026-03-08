@@ -1,10 +1,60 @@
-// ── Static data: ranks, badges, quotes, sample quests ────────
+// ── Static data: ranks, badges, quotes, MHR icons, default missions ────────
 
 export const RANKS = {
   low:    { label: 'Low Rank',    stars: [1, 2, 3], color: 'var(--mh-low)',    colorDim: 'var(--mh-low-dim)' },
   high:   { label: 'High Rank',   stars: [4, 5, 6], color: 'var(--mh-high)',   colorDim: 'var(--mh-high-dim)' },
   master: { label: 'Master Rank', stars: [7, 8, 9], color: 'var(--mh-master)', colorDim: 'var(--mh-master-dim)' },
 };
+
+// MHR monster icons by rank (sublevel 0 = easiest, 2 = hardest within rank). No Jagras on max difficulty.
+const MHR_ICONS_BY_RANK = {
+  low: [
+    'MHRise-Great_Izuchi_Icon.svg',
+    'MHRise-Arzuros_Icon.svg',
+    'MHRise-Kulu-Ya-Ku_Icon.svg',
+    'MHRise-Great_Baggi_Icon.svg',
+    'MHRise-Lagombi_Icon.svg',
+    'MHRise-Aknosom_Icon.svg',
+  ],
+  high: [
+    'MHRise-Rathian_Icon(3).svg',
+    'MHRise-Rathalos_Icon.svg',
+    'MHRise-Nargacuga_Icon.svg',
+    'MHRise-Tigrex_Icon.svg',
+    'MHRise-Mizutsune_Icon.svg',
+    'MHRise-Magnamalo_Icon.svg',
+  ],
+  master: [
+    'MHRise-Teostra_Icon.svg',
+    'MHRise-Kushala_Daora_Icon.svg',
+    'MHRise-Crimson_Glow_Valstrax_Icon.svg',
+    'MHRise-Rajang_Icon.svg',
+    'MHRise-Apex_Rathalos_Icon.svg',
+    'MHRS-Malzeno_Icon(2).svg',
+  ],
+};
+
+export const MHR_MONSTER_TIERS = MHR_ICONS_BY_RANK;
+
+/** Get monster icon filename for rank and sublevel (0-based). Sublevel caps at pool length. */
+export function getMonsterIconForRank(rank, sublevel = 0) {
+  const pool = MHR_ICONS_BY_RANK[rank] || MHR_ICONS_BY_RANK.low;
+  const idx = Math.min(Math.max(0, sublevel), pool.length - 1);
+  return pool[idx];
+}
+
+/** All monster options for request form: { value: filename, label, rank }. */
+export function getAllMonsterOptions() {
+  const out = [];
+  for (const [rank, icons] of Object.entries(MHR_ICONS_BY_RANK)) {
+    const rankLabel = RANKS[rank]?.label || rank;
+    icons.forEach((filename, i) => {
+      const name = filename.replace(/^MHR(ise|S)-|_Icon.*\.svg$/gi, '').replace(/_/g, ' ');
+      out.push({ value: filename, label: `${rankLabel} – ${name}`, rank });
+    });
+  }
+  return out;
+}
 
 export const CATEGORIES = {
   hunt:          { label: 'Hunt',          icon: '\u2694\uFE0F', desc: 'Build a new feature' },
@@ -75,59 +125,5 @@ export const POOGIE_OUTFITS = [
   { name: 'Memorial Stripes', emoji: '\uD83C\uDFF3\uFE0F' },
 ];
 
-export const SAMPLE_QUESTS = [
-  {
-    id: 'q-welcome',
-    title: 'Welcome to the New World',
-    description: 'Set up the project README and contribution guidelines so new hunters know how to join the guild.',
-    rank: 'low', stars: 1, category: 'hunt', status: 'completed',
-    repository: '', reward: 'first-hunt',
-    postedBy: 'Guildmaster', acceptedBy: [], completedBy: ['Guildmaster'],
-    createdAt: Date.now() - 86400000 * 7,
-  },
-  {
-    id: 'q-rathalos-css',
-    title: 'Slay the CSS Rathalos',
-    description: 'Fix the responsive layout bug on mobile where the quest cards overlap the filter bar. This has been terrorizing hunters on small screens.',
-    rank: 'low', stars: 2, category: 'slay', status: 'posted',
-    repository: '', reward: 'bug-slayer',
-    postedBy: 'Handler', acceptedBy: [], completedBy: [],
-    createdAt: Date.now() - 86400000 * 3,
-  },
-  {
-    id: 'q-dark-mode',
-    title: 'Capture the Night Shade',
-    description: 'Implement a dark/light theme toggle. The guild hall should look just as good in the Rotten Vale as it does in the Coral Highlands.',
-    rank: 'high', stars: 4, category: 'capture', status: 'posted',
-    repository: '', reward: 'rising-star',
-    postedBy: 'Third Fleet Master', acceptedBy: [], completedBy: [],
-    createdAt: Date.now() - 86400000 * 2,
-  },
-  {
-    id: 'q-search',
-    title: 'Track the Nergigante of Search',
-    description: 'Build a full-text search across quests, hunter names, and badge descriptions. This elder dragon of features keeps evading us.',
-    rank: 'high', stars: 5, category: 'hunt', status: 'active',
-    repository: '', reward: 'code-wyvern',
-    postedBy: 'Commander', acceptedBy: ['Ace Cadet'], completedBy: [],
-    createdAt: Date.now() - 86400000 * 5,
-  },
-  {
-    id: 'q-api',
-    title: 'Fatalis-Class API Integration',
-    description: 'Connect the quest board to GitHub Issues API so quests auto-sync from repository issues. This is the final boss of integrations.',
-    rank: 'master', stars: 9, category: 'investigation', status: 'posted',
-    repository: '', reward: 'sapphire-star',
-    postedBy: 'Guildmaster', acceptedBy: [], completedBy: [],
-    createdAt: Date.now() - 86400000,
-  },
-  {
-    id: 'q-notifications',
-    title: 'The Bazelgeuse Alert System',
-    description: 'Add browser notifications when new quests are posted or when a quest you accepted gets completed by someone else. Surprise!',
-    rank: 'high', stars: 6, category: 'hunt', status: 'posted',
-    repository: '', reward: 'sos-responder',
-    postedBy: 'Serious Handler', acceptedBy: [], completedBy: [],
-    createdAt: Date.now() - 86400000 * 4,
-  },
-];
+// Fallback when Convex is not used (e.g. localStorage mode)
+export const SAMPLE_QUESTS = [];

@@ -58,7 +58,13 @@ ES modules require an HTTP server (not `file://`):
 python3 -m http.server
 ```
 
-The app works standalone with localStorage. To enable Convex backend:
+To use the Convex backend (required for missions, auth, and requests):
+
+1. **Deploy Convex** and set the deployment URL in `js/state.js`: replace `YOUR_DEPLOYMENT` in `CONVEX_URL` with your Convex deployment host (e.g. `happy-animal-123.convex.cloud`).
+
+2. **Invite code (optional):** In the [Convex dashboard](https://dashboard.convex.dev) → your deployment → Settings → Environment Variables, add `INVITE_PASSWORD` with a shared secret. New users must enter this code when registering. If unset, anyone can register without a code.
+
+3. **Seed the board:** On first load, if the board has no quests, the app calls `seedIfEmpty` to insert the default 16 missions (Linkerd POC, Confluence POC, Gitlabform, EKS pipeline, Temporal, etc.) with rewards, status, and tool suggestions.
 
 ```bash
 npm install

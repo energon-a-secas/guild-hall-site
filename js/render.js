@@ -1,7 +1,14 @@
 // ── DOM rendering ────────────────────────────────────────────
 import { state, getLoggedInUser } from './state.js';
-import { RANKS, CATEGORIES, BADGES, hunterTitleForCompletions, randomQuote } from './data.js';
-import { escHtml, starsHtml, timeAgo } from './utils.js';
+import { RANKS, CATEGORIES, BADGES, MHR_MONSTER_TIERS, hunterTitleForCompletions, randomQuote } from './data.js';
+import { escHtml, starsHtml, timeAgo, rewardsDisplay } from './utils.js';
+
+const MHR_ICON_BASE = 'MHR_Monster_Icons_HD/svg';
+function monsterIconImg(monsterIcon) {
+  if (!monsterIcon) return '';
+  const src = `${MHR_ICON_BASE}/${encodeURIComponent(monsterIcon)}`;
+  return `<img class="quest-monster-icon" src="${escHtml(src)}" alt="" role="presentation">`;
+}
 
 export function render() {
   renderMotto();
@@ -57,19 +64,23 @@ function questCardHtml(q) {
   const rank = RANKS[q.rank] || RANKS.low;
   const cat = CATEGORIES[q.category] || CATEGORIES.hunt;
   const statusCls = `status-${q.status}`;
-  const statusLabel = q.status.charAt(0).toUpperCase() + q.status.slice(1);
-  const hunters = q.acceptedBy.length;
+  const statusLabel = q.status === 'requested' ? 'Requested' : q.status.charAt(0).toUpperCase() + q.status.slice(1);
+  const hunters = q.acceptedBy?.length ?? 0;
   const reward = BADGES.find(b => b.key === q.reward);
+  const qId = typeof q.id === 'string' ? q.id : (q.id?.toString?.() ?? q._id ?? '');
+  const iconHtml = monsterIconImg(q.monsterIcon);
 
   return `
-    <div class="quest-card rank-${escHtml(q.rank)}" data-id="${escHtml(q.id)}" onclick="window.openQuest('${escHtml(q.id)}')">
+    <div class="quest-card rank-${escHtml(q.rank)}" data-id="${escHtml(qId)}" onclick="window.openQuest('${escHtml(qId)}')">
       <div class="quest-card-header">
+        ${iconHtml ? `<span class="quest-card-monster">${iconHtml}</span>` : ''}
         <span class="quest-rank-badge rank-${escHtml(q.rank)}">${escHtml(rank.label)}</span>
         <span class="quest-stars">${starsHtml(q.stars, q.rank)}</span>
+        <span class="quest-rewards-text">${escHtml(rewardsDisplay(q))}</span>
         <span class="quest-status ${statusCls}">${escHtml(statusLabel)}</span>
       </div>
       <h3 class="quest-title">${escHtml(q.title)}</h3>
-      <p class="quest-desc">${escHtml(q.description)}</p>
+      <p class="quest-desc">${escHtml(q.description || '')}</p>
       <div class="quest-meta">
         <span class="quest-category">${cat.icon} ${escHtml(cat.label)}</span>
         ${q.repository ? `<span class="quest-repo">${escHtml(q.repository)}</span>` : ''}
@@ -77,50 +88,90 @@ function questCardHtml(q) {
         ${reward ? `<span class="quest-reward-tag">${reward.icon} ${escHtml(reward.name)}</span>` : ''}
       </div>
       <div class="quest-footer">
-        <span class="quest-posted-by">Posted by ${escHtml(q.postedBy)}</span>
+        <span class="quest-posted-by">${q.status === 'requested' ? 'Requested by' : 'Posted by'} ${escHtml(q.postedBy)}</span>
         <span class="quest-time">${timeAgo(q.createdAt)}</span>
       </div>
     </div>`;
 }
 
 export function renderQuestDetail(questId) {
-  const q = state.quests.find(x => x.id === questId);
+  const q = state.quests.find(x => (x.id === questId || (x._id && x._id.toString() === questId)));
   if (!q) return;
 
   const rank = RANKS[q.rank] || RANKS.low;
   const cat = CATEGORIES[q.category] || CATEGORIES.hunt;
   const reward = BADGES.find(b => b.key === q.reward);
   const user = getLoggedInUser();
-  const isAccepted = user && q.acceptedBy.includes(user);
-  const isCompleted = user && q.completedBy.includes(user);
-  const canAccept = user && q.status !== 'completed' && !isAccepted;
+  const role = window.getUserRole ? window.getUserRole() : 'hunter';
+  const isAccepted = user && (q.acceptedBy || []).includes(user);
+  const isCompleted = user && (q.completedBy || []).includes(user);
+  const isRequested = q.status === 'requested';
+  const canAccept = user && !isRequested && q.status !== 'completed' && !isAccepted;
   const canComplete = user && isAccepted && !isCompleted && q.status !== 'completed';
+  const canApprove = user && role === 'guildmaster' && isRequested;
+  const canEditSuggestions = !!user;
+  const qId = typeof q.id === 'string' ? q.id : (q.id?.toString?.() ?? q._id ?? '');
+  const suggestions = q.toolSuggestions || [];
+  const suggestionsList = suggestions.length
+    ? `<ul class="qd-suggestions-list">${suggestions.map(s => `<li>${escHtml(s)}</li>`).join('')}</ul>`
+    : '<p class="qd-suggestions-empty">No tool suggestions yet.</p>';
+  const statusLabel = isRequested ? 'Requested' : q.status.charAt(0).toUpperCase() + q.status.slice(1);
 
   const detail = document.getElementById('questDetail');
   detail.innerHTML = `
     <button class="modal-close" onclick="window.closeModal('questModal')">&times;</button>
     <div class="qd-header">
+      ${q.monsterIcon ? `<span class="qd-monster">${monsterIconImg(q.monsterIcon)}</span>` : ''}
       <span class="quest-rank-badge rank-${escHtml(q.rank)}">${escHtml(rank.label)}</span>
       <span class="quest-stars quest-stars-lg">${starsHtml(q.stars, q.rank)}</span>
-      <span class="quest-status status-${q.status}">${q.status.charAt(0).toUpperCase() + q.status.slice(1)}</span>
+      <span class="qd-rewards">${escHtml(rewardsDisplay(q))}</span>
+      <span class="quest-status status-${q.status}">${escHtml(statusLabel)}</span>
     </div>
     <h2 class="qd-title">${escHtml(q.title)}</h2>
     <div class="qd-category">${cat.icon} ${escHtml(cat.label)} ${cat.desc ? `- ${escHtml(cat.desc)}` : ''}</div>
-    <p class="qd-desc">${escHtml(q.description)}</p>
+    <p class="qd-desc">${escHtml(q.description || '')}</p>
     ${q.repository ? `<div class="qd-repo">Repository: <strong>${escHtml(q.repository)}</strong></div>` : ''}
     ${reward ? `<div class="qd-reward">Reward: <span class="reward-badge">${reward.icon} ${escHtml(reward.name)}</span> - ${escHtml(reward.description)}</div>` : ''}
+    <div class="qd-suggestions">
+      <h4>Tool suggestions</h4>
+      <div id="qdSuggestionsView">${suggestionsList}</div>
+      ${canEditSuggestions ? `<div id="qdSuggestionsEdit" class="qd-suggestions-edit" hidden><textarea id="qdSuggestionsText" rows="3" placeholder="One per line">${escHtml(suggestions.join('\n'))}</textarea><button type="button" class="btn-secondary btn-save-suggestions" id="qdSuggestionsSave">Save</button><button type="button" class="btn-secondary" id="qdSuggestionsCancel">Cancel</button></div><button type="button" class="btn-link" id="qdSuggestionsToggle">Edit suggestions</button>` : ''}
+    </div>
     <div class="qd-info">
-      <div>Posted by <strong>${escHtml(q.postedBy)}</strong> - ${timeAgo(q.createdAt)}</div>
-      ${q.acceptedBy.length > 0 ? `<div>Hunters: ${q.acceptedBy.map(h => `<span class="hunter-tag" onclick="window.openHunter('${escHtml(h)}')">${escHtml(h)}</span>`).join(' ')}</div>` : ''}
-      ${q.completedBy.length > 0 ? `<div>Completed by: ${q.completedBy.map(h => `<span class="hunter-tag completed">${escHtml(h)}</span>`).join(' ')}</div>` : ''}
+      <div>${isRequested ? 'Requested' : 'Posted'} by <strong>${escHtml(q.postedBy)}</strong> - ${timeAgo(q.createdAt)}</div>
+      ${(q.acceptedBy || []).length > 0 ? `<div>Hunters: ${q.acceptedBy.map(h => `<span class="hunter-tag" onclick="window.openHunter('${escHtml(h)}')">${escHtml(h)}</span>`).join(' ')}</div>` : ''}
+      ${(q.completedBy || []).length > 0 ? `<div>Completed by: ${q.completedBy.map(h => `<span class="hunter-tag completed">${escHtml(h)}</span>`).join(' ')}</div>` : ''}
     </div>
     <div class="qd-actions">
-      ${canAccept ? `<button class="btn-accept" onclick="window.acceptQuest('${escHtml(q.id)}')">Accept Quest</button>` : ''}
-      ${canComplete ? `<button class="btn-complete" onclick="window.completeQuest('${escHtml(q.id)}')">Carve Rewards</button>` : ''}
+      ${canApprove ? `<button class="btn-approve" onclick="window.approveQuest('${escHtml(qId)}')">Approve Request</button>` : ''}
+      ${canAccept ? `<button class="btn-accept" onclick="window.acceptQuest('${escHtml(qId)}')">Accept Quest</button>` : ''}
+      ${canComplete ? `<button class="btn-complete" onclick="window.completeQuest('${escHtml(qId)}')">Carve Rewards</button>` : ''}
       ${!user ? '<p class="qd-login-hint">Log in to accept quests and earn rewards</p>' : ''}
     </div>`;
 
   document.getElementById('questModal').classList.add('open');
+  if (canEditSuggestions) {
+    const toggle = document.getElementById('qdSuggestionsToggle');
+    const view = document.getElementById('qdSuggestionsView');
+    const edit = document.getElementById('qdSuggestionsEdit');
+    const text = document.getElementById('qdSuggestionsText');
+    const saveBtn = document.getElementById('qdSuggestionsSave');
+    const cancelBtn = document.getElementById('qdSuggestionsCancel');
+    toggle?.addEventListener('click', () => {
+      const showEdit = view.hidden;
+      view.hidden = !showEdit;
+      edit.hidden = !showEdit;
+      toggle.textContent = showEdit ? 'Cancel' : 'Edit suggestions';
+    });
+    cancelBtn?.addEventListener('click', () => {
+      view.hidden = false;
+      edit.hidden = true;
+      toggle.textContent = 'Edit suggestions';
+    });
+    saveBtn?.addEventListener('click', () => {
+      if (window.saveQuestSuggestions) window.saveQuestSuggestions(qId, text?.value ?? '');
+    });
+  }
 }
 
 export function renderHunterCard(username) {
