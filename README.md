@@ -69,6 +69,8 @@ npx convex dev
 
 ## Architecture
 
+![Architecture](docs/architecture.svg)
+
 ```
 guild-hall-site/
 ├── index.html           # HTML shell with quest board, modals, Poogie

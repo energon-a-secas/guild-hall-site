@@ -7,7 +7,11 @@ import { $, showToast } from './utils.js';
 export function bindEvents() {
   // ── Auth ────────────────────────────────────────────────
   $('authToggle')?.addEventListener('click', () => {
-    $('authPanel')?.classList.toggle('open');
+    const panel = $('authPanel');
+    panel?.classList.toggle('open');
+    if (panel?.classList.contains('open')) {
+      panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   });
 
   document.querySelectorAll('.auth-tab').forEach(tab => {
