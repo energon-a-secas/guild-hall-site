@@ -5,3 +5,6 @@ npm-debug.log*
 .env
 .env.*
 MHW*
+
+# Claude AI guidance (maintained centrally in .claude/project-claudes/)
+CLAUDE.md
