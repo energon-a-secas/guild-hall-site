@@ -1,7 +1,7 @@
 // ── State management + Convex client ─────────────────────────────────
 import { ConvexHttpClient } from "https://esm.sh/convex@1.21.0/browser";
 
-const CONVEX_URL = "https://good-fly-718.convex.cloud";
+const CONVEX_URL = "https://incredible-turtle-761.convex.cloud";
 export const convex = new ConvexHttpClient(CONVEX_URL);
 
 export const api = {

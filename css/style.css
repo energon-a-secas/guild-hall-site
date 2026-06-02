@@ -1,6 +1,8 @@
 /* ── Reset & base ──────────────────────────────────────────── */
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
+html { height: 100%; }
+
 :root {
   --bg: #040714;
   --surface-1: rgba(255,255,255,.03);
@@ -40,9 +42,17 @@
 body {
   font-family: var(--font);
   background: var(--bg);
-  min-height: 100vh;
+  min-height: 100%;
   color: var(--text-primary);
   display: flex; flex-direction: column;
+}
+
+main#main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  width: 100%;
 }
 
 /* ── Header ────────────────────────────────────────────────── */
@@ -63,26 +73,40 @@ body {
   transition: transform 0.3s var(--ease-snap); display: block;
 }
 .header-logo-img:hover { transform: scale(1.14) rotate(-9deg); }
+.header-title-link { text-decoration: none; color: inherit; }
 .header-logo h1 { font-size: 1.2em; font-weight: 600; color: var(--text-primary); letter-spacing: .5px; }
 .header-subtitle { font-size: .82em; color: rgba(255,255,255,.72); font-weight: 500; margin-top: 3px; }
 
 /* ── Auth toggle ──────────────────────────────────────────── */
 .auth-toggle {
   margin-left: auto;
-  background: none; border: none; cursor: pointer;
-  color: rgba(255,255,255,.8);
-  display: flex; align-items: center;
-  padding: 5px; border-radius: var(--radius-sm);
-  transition: color var(--dur), background var(--dur);
+  padding: 6px;
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: rgba(255,255,255,0.9);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  transition: background var(--dur), color var(--dur);
 }
-.auth-toggle svg { width: 34px; height: 34px; display: block; }
+.auth-toggle svg {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  display: block;
+}
 .auth-toggle:hover { color: #fff; background: rgba(255,255,255,.12); }
 .auth-toggle.logged-in { color: var(--mh-gold); }
+.auth-toggle.logged-in svg circle:nth-of-type(2) {
+  fill: currentColor;
+  stroke: none;
+}
 
 /* ── Home icon ────────────────────────────────────────────── */
 .header-home {
   display: flex; align-items: center;
-  margin-left: 5px; padding: 5px;
+  margin-left: 8px; padding: 5px;
   color: rgba(255,255,255,0.9); text-decoration: none;
   border-radius: var(--radius-sm);
   transition: color var(--dur), background var(--dur); flex-shrink: 0;
@@ -150,6 +174,26 @@ body {
 .container {
   max-width: 1200px; width: 100%; margin: 0 auto;
   padding: 30px; flex: 1;
+}
+
+.info-footer {
+  text-align: center;
+  padding: 20px var(--space-6) 28px;
+  color: var(--text-muted);
+  font-size: .78em;
+  line-height: 1.8;
+  border-top: 1px solid var(--border-subtle);
+  margin-top: 48px;
+}
+.footer-link {
+  color: var(--text-muted);
+  text-decoration: none;
+  transition: color var(--dur);
+}
+.footer-link:hover,
+.footer-link:focus-visible {
+  color: var(--text-secondary);
+  text-decoration: underline;
 }
 
 /* ── Guild banner ─────────────────────────────────────────── */
