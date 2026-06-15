@@ -19,7 +19,8 @@ export function bindEvents() {
     const panel = $('authPanel');
     panel?.classList.toggle('open');
     if (panel?.classList.contains('open')) {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      window.scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' });
     }
   });
 
