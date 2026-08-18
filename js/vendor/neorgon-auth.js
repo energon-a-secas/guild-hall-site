@@ -3,6 +3,13 @@
  * Lives in the neorgon-auth-client repo; sites load this module from their deployed URL
  * or from the local CORS dev server (make serve).
  *
+ * Sites that set a Content-Security-Policy meta/header must allow Clerk + Turnstile, e.g.:
+ * script-src … https://esm.sh https://challenges.cloudflare.com;
+ * connect-src … https://challenges.cloudflare.com https://*.clerk.accounts.dev https://api.clerk.com …;
+ * frame-src 'self' https://challenges.cloudflare.com https://*.clerk.accounts.dev;
+ * worker-src 'self' blob:;
+ * See https://clerk.com/docs/security/clerk-csp and Cloudflare Turnstile CSP docs.
+ *
  * @typedef {object} NeorgonAuthOptions
  * @property {import("https://esm.sh/convex@1.21.0/browser").ConvexHttpClient} convex
  * @property {string} publishableKey Clerk publishable key (pk_test_… / pk_live_…)
@@ -10,6 +17,8 @@
  * @property {HTMLElement | string} [userButtonHost] Mount target for UserButton when signed in
  * @property {(info: { clerk: import("@clerk/clerk-js").LoadedClerk, hasSession: boolean }) => void} [onSession] Called after load and when session changes
  * @property {Record<string, unknown>} [signInProps] Extra props passed to Clerk `mountSignIn` (e.g. `appearance`, `localization`).
+ * @property {Record<string, unknown>} [userButtonProps] Extra props passed to Clerk `mountUserButton` (e.g. `showName: false`).
+ * @property {Record<string, unknown>} [clerkAppearance] Passed to `clerk.load({ appearance })` so UserButton popover, menus, and sign-out match your theme.
  */
 
 /** @param {HTMLElement | string | undefined} host */
@@ -19,19 +28,25 @@ function el(host) {
   return host;
 }
 
-/** @param {import("@clerk/clerk-js").LoadedClerk} clerk */
-/** @param {import("https://esm.sh/convex@1.21.0/browser").ConvexHttpClient} convex */
-function bindConvexAuth(clerk, convex) {
-  convex.setAuth(async () => {
-    try {
-      const session = clerk.session;
-      if (!session) return null;
-      const token = await session.getToken({ template: "convex" });
-      return token ?? null;
-    } catch {
-      return null;
+/**
+ * ConvexHttpClient.setAuth() only accepts a JWT string (unlike ConvexClient WebSocket, which
+ * accepts a token fetcher). Resolve Clerk's Convex template token and set or clear auth.
+ * @param {import("@clerk/clerk-js").LoadedClerk} clerk
+ * @param {import("https://esm.sh/convex@1.21.0/browser").ConvexHttpClient} convex
+ */
+async function syncConvexHttpJwt(clerk, convex) {
+  try {
+    const session = clerk.session;
+    if (!session) {
+      convex.clearAuth();
+      return;
     }
-  });
+    const token = await session.getToken({ template: "convex" });
+    if (token) convex.setAuth(token);
+    else convex.clearAuth();
+  } catch {
+    convex.clearAuth();
+  }
 }
 
 /**
@@ -40,12 +55,21 @@ function bindConvexAuth(clerk, convex) {
  * @returns {Promise<import("@clerk/clerk-js").LoadedClerk>}
  */
 export async function initNeorgonClerkConvex(options) {
-  const { convex, publishableKey, signInHost, userButtonHost, onSession, signInProps = {} } = options;
+  const {
+    convex,
+    publishableKey,
+    signInHost,
+    userButtonHost,
+    onSession,
+    signInProps = {},
+    userButtonProps = {},
+    clerkAppearance,
+  } = options;
   if (!publishableKey) {
     throw new Error("Neorgon auth: set <meta name=\"clerk-publishable-key\" content=\"pk_…\"> or pass publishableKey.");
   }
 
-  const { Clerk } = await import("https://esm.sh/@clerk/clerk-js@5.59.0");
+  const { Clerk } = await import("https://esm.sh/@clerk/clerk-js@5.125.10");
   const clerk = new Clerk(publishableKey);
 
   const signInEl = el(signInHost);
@@ -73,17 +97,20 @@ export async function initNeorgonClerkConvex(options) {
     if (userEl) userEl.replaceChildren();
   }
 
-  function mountClerkUi() {
+  async function mountClerkUi() {
     unmountClerkUi();
-    bindConvexAuth(clerk, convex);
+    await syncConvexHttpJwt(clerk, convex);
     if (clerk.session && userEl) {
-      clerk.mountUserButton(userEl);
+      clerk.mountUserButton(userEl, {
+        ...userButtonProps,
+      });
       mounted = "user";
     } else if (signInEl) {
+      // withSignUp + hash routing: stay in the mounted modal. Do not set signUpUrl /
+      // fallbackRedirectUrl to location.href — that becomes a normal navigation and reloads the page.
       clerk.mountSignIn(signInEl, {
         routing: "hash",
-        fallbackRedirectUrl: window.location.href,
-        signUpUrl: window.location.href,
+        withSignUp: true,
         ...signInProps,
       });
       mounted = "signin";
@@ -91,21 +118,26 @@ export async function initNeorgonClerkConvex(options) {
     onSession?.({ clerk, hasSession: !!clerk.session });
   }
 
-  await clerk.load();
-  bindConvexAuth(clerk, convex);
-  mountClerkUi();
+  if (clerkAppearance != null) {
+    await clerk.load({ appearance: clerkAppearance });
+  } else {
+    await clerk.load();
+  }
+  await mountClerkUi();
 
   if (typeof clerk.addListener === "function") {
     let prev = !!clerk.session;
     clerk.addListener(() => {
-      const next = !!clerk.session;
-      bindConvexAuth(clerk, convex);
-      if (next !== prev) {
-        prev = next;
-        mountClerkUi();
-      } else {
-        onSession?.({ clerk, hasSession: next });
-      }
+      void (async () => {
+        await syncConvexHttpJwt(clerk, convex);
+        const next = !!clerk.session;
+        if (next !== prev) {
+          prev = next;
+          await mountClerkUi();
+        } else {
+          onSession?.({ clerk, hasSession: next });
+        }
+      })();
     });
   }
 
