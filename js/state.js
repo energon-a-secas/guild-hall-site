@@ -1,3 +1,8 @@
+// Raw localStorage throws in private browsing, where the object exists but
+// every access raises. These wrappers return a fallback instead. Storage
+// keys and formats are unchanged, so existing saved data still loads.
+import { safeGet, safeRemove, safeSet } from './neorgon-persist.js';
+
 // ── State management + Convex client ─────────────────────────────────
 import { ConvexHttpClient } from "https://esm.sh/convex@1.21.0/browser";
 
@@ -50,23 +55,23 @@ export function setQuestsFromConvex(quests) {
 }
 
 export function savePoogie(count) {
-  localStorage.setItem(POOGIE_KEY, String(count));
+  safeSet(POOGIE_KEY, String(count));
 }
 
 export function getLoggedInUser() {
-  return localStorage.getItem(AUTH_USER_KEY) || null;
+  return safeGet(AUTH_USER_KEY) || null;
 }
 
 export function setLoggedInUser(username) {
-  if (username) localStorage.setItem(AUTH_USER_KEY, username);
-  else localStorage.removeItem(AUTH_USER_KEY);
+  if (username) safeSet(AUTH_USER_KEY, username);
+  else safeRemove(AUTH_USER_KEY);
 }
 
 export function getUserRole() {
-  return localStorage.getItem(AUTH_ROLE_KEY) || "hunter";
+  return safeGet(AUTH_ROLE_KEY) || "hunter";
 }
 
 export function setUserRole(role) {
-  if (role && role !== "hunter") localStorage.setItem(AUTH_ROLE_KEY, role);
-  else localStorage.removeItem(AUTH_ROLE_KEY);
+  if (role && role !== "hunter") safeSet(AUTH_ROLE_KEY, role);
+  else safeRemove(AUTH_ROLE_KEY);
 }
