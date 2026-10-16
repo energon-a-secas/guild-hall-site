@@ -579,7 +579,7 @@ button:active { transform: scale(0.97); transition-duration: var(--dur-fast); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
-    transition-duration: 0.01ms !important;
+    transition: none !important;
   }
 }
 
